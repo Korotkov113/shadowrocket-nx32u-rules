@@ -1,0 +1,30 @@
+name: Update rules
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and validate rules
+        run: |
+          python3 scripts/update_rules.py
+          python3 scripts/update_rules.py --check
+      - name: Commit changed rules
+        run: |
+          if git diff --quiet -- rules/; then
+            echo "Rules are already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rules/
+          git commit -m "chore: update rules"
+          git push
