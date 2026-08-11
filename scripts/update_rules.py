@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main"
+PUBLIC_RAW = "https://raw.githubusercontent.com/Korotkov113/shadowrocket-nx32u-rules/main"
 DOMAIN_SOURCES = (
     "Services/google_ai.lst",
     "Services/telegram.lst",
@@ -45,6 +46,32 @@ def domain(value: str, source: str) -> str:
     return value
 
 
+def validate_config() -> None:
+    active = [
+        line.strip()
+        for line in (ROOT / "shadowrocket.conf").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    required = {
+        f"update-url = {PUBLIC_RAW}/shadowrocket.conf",
+        "dns-server = https://dns.adguard-dns.com/dns-query#proxy",
+        f"RULE-SET,{PUBLIC_RAW}/rules/domains.list,PROXY",
+        f"RULE-SET,{PUBLIC_RAW}/rules/ipv4.list,PROXY,no-resolve",
+    }
+    if not required.issubset(active) or active[-1] != "FINAL,DIRECT":
+        raise ValueError("Публичный shadowrocket.conf потерял обязательные настройки")
+    excluded_routes = {
+        route.strip()
+        for line in active
+        if line.startswith("tun-excluded-routes = ")
+        for route in line.split("=", 1)[1].split(",")
+    }
+    if "0.0.0.0/8" in excluded_routes or any(
+        "https://d.adguard-dns.com/dns-query/" in line for line in active
+    ):
+        raise ValueError("Публичный shadowrocket.conf содержит небезопасную настройку")
+
+
 def generate() -> dict[Path, str]:
     domains = {
         domain(value, source)
@@ -73,6 +100,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Обновляет правила Shadowrocket из itdoginfo/allow-domains")
     parser.add_argument("--check", action="store_true", help="проверить актуальность без записи")
     check = parser.parse_args().check
+    validate_config()
     generated = generate()
     stale = [path for path, text in generated.items() if not path.exists() or path.read_text(encoding="utf-8") != text]
 
@@ -91,4 +119,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
